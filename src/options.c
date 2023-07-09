@@ -393,7 +393,61 @@ static int opt_setmembership(lua_State *L, p_socket ps, int level, int name)
         luaL_argerror(L, 3, "invalid 'interface' ip address");
     return opt_set(L, ps, level, name, (char *) &val, sizeof(val));
 }
+#ifdef XP_WIN
+static int inet_pton_xp (int af, const char* src, void* dst) {
+	switch (af) {
+	case AF_INET: {
+		struct sockaddr_in sa;
+		int len = sizeof(sa);
+		sa.sin_family = AF_INET;
+		if (!WSAStringToAddress ((LPTSTR)src, af, NULL, 
+			(LPSOCKADDR)&sa, &len)) {
+				memcpy (dst, &sa.sin_addr, sizeof(struct in_addr));
+				return 1;
+		} else return -1;
+				  }
+#ifdef HAVE_IPV6
+	case AF_INET6: {
+		struct sockaddr_in6 sa;
+		int len = sizeof(sa);
+		sa.sin6_family = AF_INET6;
+		if (!WSAStringToAddress ((LPTSTR)src, af, NULL, 
+			(LPSOCKADDR)&sa, &len)) {
+				memcpy (dst, &sa.sin6_addr, sizeof(struct in6_addr));
+				return 1;
+		} else return -1;
+				   }
+#endif
+	}
+}
 
+static char* inet_ntop_xp (int af, const void* src, char* dst, size_t dstlen) {
+	switch (af) {
+	case AF_INET: {
+		struct sockaddr_in sa;
+		DWORD len = dstlen;
+		sa.sin_family = AF_INET;
+		memcpy (&sa.sin_addr, src, sizeof(struct in_addr));
+		if (!WSAAddressToString ((LPSOCKADDR)&sa, (DWORD)sizeof(sa), 
+			NULL, (LPTSTR)dst, &len ))
+			return dst;
+		else return NULL;
+				  }
+#ifdef HAVE_IPV6
+	case AF_INET6: {
+		struct sockaddr_in6 sa;
+		DWORD len = dstlen;
+		sa.sin6_family = AF_INET6;
+		memcpy (&sa.sin6_addr, src, sizeof(struct in6_addr) );
+		if (!WSAAddressToString ((LPSOCKADDR)&sa, (DWORD)sizeof(sa), 
+			NULL, (LPTSTR)dst, &len ))
+			return dst;
+		else return NULL;
+				   }
+#endif
+	}
+}
+#endif
 static int opt_ip6_setmembership(lua_State *L, p_socket ps, int level, int name)
 {
     struct ipv6_mreq val;                   /* obj, opt-name, table */
@@ -403,7 +457,11 @@ static int opt_ip6_setmembership(lua_State *L, p_socket ps, int level, int name)
     lua_gettable(L, 3);
     if (!lua_isstring(L, -1))
         luaL_argerror(L, 3, "string 'multiaddr' field expected");
-    if (!inet_pton(AF_INET6, lua_tostring(L, -1), &val.ipv6mr_multiaddr))
+#ifdef XP_WIN
+	if (!inet_pton_xp(AF_INET6, lua_tostring(L, -1), &val.ipv6mr_multiaddr))
+#else
+	if (!inet_pton(AF_INET6, lua_tostring(L, -1), &val.ipv6mr_multiaddr))
+#endif
         luaL_argerror(L, 3, "invalid 'multiaddr' ip address");
     lua_pushstring(L, "interface");
     lua_gettable(L, 3);
